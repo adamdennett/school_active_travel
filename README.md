@@ -56,8 +56,8 @@ touch data/PAUSE                           # or stop at the next chunk, at any t
 ```
 
 The whole of England is about 23–28 million pairs. On the test machine (16 cores,
-64 GB) that is roughly 11–14 hours: 1–2 hours clipping streets, about 2 hours building
-networks, 5–7 hours of routes and profiles, about 3 hours of cycling times. The machine
+64 GB) that is roughly 11–14 hours: a few minutes clipping streets, 1–2 hours building
+networks, about 8 hours of routes and profiles, 2–3 hours of cycling times. The machine
 must not sleep while it runs.
 
 `run.sh` builds the frame if it is missing (`R/01_frame.R`), clips the streets for each

@@ -1,0 +1,6 @@
+.Rhistory
+.RData
+.Rproj.user
+data/
+logs/
+.claude/

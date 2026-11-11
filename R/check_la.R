@@ -22,6 +22,6 @@ rt <- merge(rt, near[, .(oa21cd, urn, climb_to_school_m)], by = c("oa21cd", "urn
 g <- st_sf(climb = rt$climb_to_school_m, geometry = st_as_sfc(structure(lapply(rt$geom_wkb, as.raw), class = "WKB"), crs = 27700))
 p <- ggplot(g) + geom_sf(aes(colour = pmin(climb, 80)), linewidth = 0.15, alpha = 0.5) + scale_colour_viridis_c(option = "magma", direction = -1, name = "Climb to school (m)") +
   geom_point(data = s[urn %in% near$urn], aes(e, n), shape = 21, fill = "white", size = 2) + coord_sf(datum = NA) +
-  labs(title = paste(sub("^E\\d+_", "", a), ": walking routes to secondary schools within 30 minutes"), x = NULL, y = NULL) + theme_minimal(12)
+  labs(title = paste0(o$lad25nm[1], ": walking routes to secondary schools within 30 minutes"), x = NULL, y = NULL) + theme_minimal(12)
 ggsave(here::here("docs", paste0("check_", a, ".png")), p, width = 9, height = 6.5, dpi = 110)
 cat("map: docs/check_", a, ".png (", nrow(rt), " routes)\n", sep = "")

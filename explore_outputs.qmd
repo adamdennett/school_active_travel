@@ -80,6 +80,71 @@ find_school("Stringer")
 oa_near(50.8300, -0.1050)    # near Whitehawk, Brighton
 ```
 
+## What you can choose from
+
+`od_columns()` lists every column of the `od` table and what it means. Any column
+marked *number* can go in `COLOUR_BY` or `PROFILE_ORDER`, or in a filter of your own.
+Give it an authority, `od_columns("E06000043_brighton_and_hove")`, and it adds the
+lowest, median and highest values there, so you can see sensible thresholds.
+
+```{r od-columns}
+od_columns <- function(la = NULL) {
+  cols <- tibble::tribble(
+    ~column,                 ~kind,    ~units,          ~meaning,
+    "oa21cd",                "code",   "",              "Census 2021 Output Area of home (its population-weighted centroid). Use in ORIGINS.",
+    "urn",                   "code",   "",              "School's unique reference number (GIAS). Use in SCHOOLS; names are in schools.parquet.",
+    "la",                    "code",   "",              "Folder of the home Output Area's local authority (2025), code_name. Use in LA.",
+    "straight_m",            "number", "metres",        "Straight-line distance from home to school.",
+    "route_m",               "number", "metres",        "Length of the shortest walking route on the street network.",
+    "circuity",              "number", "ratio",         "route_m / straight_m: how indirect the walk is (1 = as the crow flies). Meaningless for very short straight lines: 999 where the centroid sits on the school, so filter straight_m > 200 first.",
+    "walk_min_r5",           "number", "minutes",       "Walking time at 4.8 km/h on the flat from r5r's travel-time matrix. Sets who is in reach (up to 120). Used by MAX_WALK_MIN.",
+    "walk_min_route",        "number", "minutes",       "Walking time at 4.8 km/h along the routed path (r5r detailed itinerary); usually within a minute of walk_min_r5.",
+    "tobler_min_to_school",  "number", "minutes",       "Walking time home to school allowing for slope: Tobler's hiking function applied every 50 m, scaled so the flat is 4.8 km/h. Uphill and steep downhill are slower.",
+    "tobler_min_to_home",    "number", "minutes",       "The same for the walk back, school to home. Differs from the above where the route climbs one way and descends the other.",
+    "bike_min_lts2",         "number", "minutes",       "Cycling at 12 km/h on quiet streets only (level of traffic stress 2; R5 has the rider walk the bike where no quiet street joins up). Empty if over 60 minutes.",
+    "bike_min_lts4",         "number", "minutes",       "Cycling at 12 km/h on any street a bike may use (LTS 4). Empty if over 60 minutes. (The Brighton test tile, x08_y01, was searched to 120 minutes, so it has times above 60.)",
+    "r5_route_m",            "number", "metres",        "Route length as r5r reports it; a check on route_m.",
+    "z_home",                "number", "metres",        "Ground height at home (OS Terrain 50).",
+    "z_school",              "number", "metres",        "Ground height at the school.",
+    "z_max",                 "number", "metres",        "Highest point on the route.",
+    "climb_to_school_m",     "number", "metres",        "Total ascent on the way to school: every uphill 50 m step added up.",
+    "climb_to_home_m",       "number", "metres",        "Total ascent on the way home.",
+    "max_grad_to_school",    "number", "rise / run",    "Steepest 50 m uphill on the way to school (0.08 = 8%). Negative if the route never climbs (then it is the gentlest descent).",
+    "max_grad_to_home",      "number", "rise / run",    "Steepest 50 m uphill on the way home.",
+    "steep5_to_school_m",    "number", "metres",        "Length of route steeper than 5% uphill on the way to school.",
+    "steep5_to_home_m",      "number", "metres",        "Length steeper than 5% uphill on the way home.",
+    "steep8_to_school_m",    "number", "metres",        "Length steeper than 8% uphill on the way to school.",
+    "steep8_to_home_m",      "number", "metres",        "Length steeper than 8% uphill on the way home.")
+  if (is.null(la)) return(cols)
+  x <- od_open() |> filter(la == !!la) |> select(all_of(cols$column[cols$kind == "number"])) |> collect()
+  stats <- tibble::tibble(column = names(x),
+                          lowest = sapply(x, \(v) signif(min(v, na.rm = TRUE), 3)),
+                          median = sapply(x, \(v) signif(median(v, na.rm = TRUE), 3)),
+                          highest = sapply(x, \(v) signif(max(v, na.rm = TRUE), 3)),
+                          pct_empty = sapply(x, \(v) round(100 * mean(is.na(v)), 1)))
+  left_join(cols, stats, by = "column")
+}
+
+od_columns("E06000043_brighton_and_hove")
+```
+
+The other choices take these values:
+
+| Setting | Takes |
+|---|---|
+| `LA` | one `la` from the *available* table above |
+| `ORIGINS` | `NULL` (all Output Areas in `LA`), or a vector of `oa21cd` codes in that authority |
+| `PHASE` | `"primary"` (schools teaching ages 7–10), `"secondary"` (ages 12–14), or `"any"`; all-through and middle schools count as both where their ages say so |
+| `SCHOOLS` | `NULL`, or a vector of URNs (see `find_school()`) |
+| `SCHOOL_NAME` | `NULL`, or a regular expression matched to school names, not case-sensitive, e.g. `"Stringer\|Varndean"` |
+| `INCLUDE_INDEPENDENT` | `TRUE` or `FALSE` |
+| `MAX_WALK_MIN` | 1 to 120, applied to `walk_min_r5` |
+| `NEAREST_ONLY` | `TRUE` keeps only each Output Area's nearest chosen school by walking time |
+| `COLOUR_BY`, `PROFILE_ORDER` | any *number* column above, in quotes |
+| `MAX_ROUTES`, `N_PROFILES` | how many routes to map and profiles to draw |
+| `PROFILE_DIRECTION` | `"to_school"` or `"to_home"` |
+| `BASEMAP` | any [leaflet provider](https://leaflet-extras.github.io/leaflet-providers/preview/) name, e.g. `"OpenStreetMap"`, `"Esri.WorldGrayCanvas"`, `"Esri.WorldImagery"` |
+
 ## Your choices {#your-choices}
 
 **Edit this chunk**, then run it and everything below it again.
@@ -97,7 +162,7 @@ SCHOOL_NAME <- NULL                   # NULL, or part of a name, e.g. "Stringer|
 INCLUDE_INDEPENDENT <- TRUE
 
 # Which pairs
-MAX_WALK_MIN <- 20                    # walking time at 4.8 km/h on the flat (walk_min_r5)
+MAX_WALK_MIN <- 60                    # walking time at 4.8 km/h on the flat (walk_min_r5)
 NEAREST_ONLY <- FALSE                 # TRUE: only each Output Area's nearest school (by walking time) among those chosen
 
 # Drawing
@@ -106,7 +171,7 @@ MAX_ROUTES <- 3000                    # map at most this many routes (the shorte
 N_PROFILES <- 6                       # height profiles to draw
 PROFILE_ORDER <- "climb_to_school_m"  # profiles of the pairs with the most of this
 PROFILE_DIRECTION <- "to_school"      # "to_school" or "to_home"
-BASEMAP <- "OpenStreetMap"            # or "Esri.WorldGrayCanvas", "Esri.WorldImagery"
+BASEMAP <- "Esri.WorldGrayCanvas"            # or "Esri.WorldGrayCanvas", "Esri.WorldImagery", "OpenStreetMap"     
 ```
 
 ## The pairs you chose
@@ -147,7 +212,7 @@ sel |>
   arrange(desc(output_areas))
 ```
 
-Every pair, with the columns you are most likely to want (all 27 `od` columns are in `sel`; see the README for what each one means):
+Every pair, with the columns you are most likely to want (all the `od` columns are in `sel`; `od_columns()` above says what each one means):
 
 ```{r pairs-table}
 sel |> select(oa21cd, name, walk_min_r5, tobler_min_to_school, tobler_min_to_home, route_m, straight_m, circuity,

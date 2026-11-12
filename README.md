@@ -121,6 +121,7 @@ approach was used for 109 urban authorities.
 `explore_outputs.qmd` reads one authority at a time: pick the authority, Output Areas,
 schools and a walking-time limit in one chunk, and it maps the routes (coloured by any
 column), draws height profiles and tabulates the pairs. It has recipes for one Output
-Area's schools, the climb to the nearest secondary school, flat against slope-adjusted
+Area's schools, the climb to the nearest secondary school, cycle routes worked out on
+demand beside the walk, flat against slope-adjusted
 time, walking against cycling, summaries across England with arrow, and saving a
 selection to CSV or GeoPackage.

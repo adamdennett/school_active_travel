@@ -32,6 +32,18 @@ has 300 or more schools within reach of each Output Area, so keep `MAX_WALK_MIN`
 pick particular Output Areas and schools there before drawing routes.
 :::
 
+::: {.callout-important}
+## What is saved, and what is not
+The national run saves the **walking** route of every pair: its line (`routes`), its
+height every 50 m (`profiles`) and its distance, climb, steepness and slope-adjusted
+times (columns of `od`). For **cycling** it saves only the two **times**
+(`bike_min_lts2`, `bike_min_lts4`), from r5r's travel-time matrix, which gives no line.
+So every line, profile and climb in the main map and charts is the walking route, even
+when the map is coloured by a cycling time; the cycle route may use other streets. To
+see cycle routes, [Cycling routes, worked out on demand](#cycling-routes) routes the
+pairs you pick by bike while you wait (`R/bike_routes.R`).
+:::
+
 ```{r setup}
 library(dplyr)
 library(arrow)
@@ -84,6 +96,8 @@ oa_near(50.8300, -0.1050)    # near Whitehawk, Brighton
 
 `od_columns()` lists every column of the `od` table and what it means. Any column
 marked *number* can go in `COLOUR_BY` or `PROFILE_ORDER`, or in a filter of your own.
+Every distance, height, climb, steepness and Tobler column describes the **walking**
+route; the two cycling columns are times only.
 Give it an authority, `od_columns("E06000043_brighton_and_hove")`, and it adds the
 lowest, median and highest values there, so you can see sensible thresholds.
 
@@ -101,8 +115,8 @@ od_columns <- function(la = NULL) {
     "walk_min_route",        "number", "minutes",       "Walking time at 4.8 km/h along the routed path (r5r detailed itinerary); usually within a minute of walk_min_r5.",
     "tobler_min_to_school",  "number", "minutes",       "Walking time home to school allowing for slope: Tobler's hiking function applied every 50 m, scaled so the flat is 4.8 km/h. Uphill and steep downhill are slower.",
     "tobler_min_to_home",    "number", "minutes",       "The same for the walk back, school to home. Differs from the above where the route climbs one way and descends the other.",
-    "bike_min_lts2",         "number", "minutes",       "Cycling at 12 km/h on quiet streets only (level of traffic stress 2; R5 has the rider walk the bike where no quiet street joins up). Empty if over 60 minutes.",
-    "bike_min_lts4",         "number", "minutes",       "Cycling at 12 km/h on any street a bike may use (LTS 4). Empty if over 60 minutes. (The Brighton test tile, x08_y01, was searched to 120 minutes, so it has times above 60.)",
+    "bike_min_lts2",         "number", "minutes",       "Cycling time at 12 km/h on quiet streets only (level of traffic stress 2; R5 has the rider walk the bike where no quiet street joins up). Empty if over 60 minutes. A time only: no cycle route, profile or climb is saved; see bike_routes().",
+    "bike_min_lts4",         "number", "minutes",       "Cycling time at 12 km/h on any street a bike may use (LTS 4). Empty if over 60 minutes. A time only, like LTS 2. (The Brighton test tile, x08_y01, was searched to 120 minutes, so it has times above 60.)",
     "r5_route_m",            "number", "metres",        "Route length as r5r reports it; a check on route_m.",
     "z_home",                "number", "metres",        "Ground height at home (OS Terrain 50).",
     "z_school",              "number", "metres",        "Ground height at the school.",
@@ -125,7 +139,7 @@ od_columns <- function(la = NULL) {
   left_join(cols, stats, by = "column")
 }
 
-od_columns("E06000043_brighton_and_hove")
+t <- od_columns("E06000043_brighton_and_hove")
 ```
 
 The other choices take these values:
@@ -143,6 +157,7 @@ The other choices take these values:
 | `COLOUR_BY`, `PROFILE_ORDER` | any *number* column above, in quotes |
 | `MAX_ROUTES`, `N_PROFILES` | how many routes to map and profiles to draw |
 | `PROFILE_DIRECTION` | `"to_school"` or `"to_home"` |
+| `BIKE_ROUTES` | `TRUE` also routes the profile pairs by bike (quiet streets and any street) and maps them beside the walk; `FALSE` skips it |
 | `BASEMAP` | any [leaflet provider](https://leaflet-extras.github.io/leaflet-providers/preview/) name, e.g. `"OpenStreetMap"`, `"Esri.WorldGrayCanvas"`, `"Esri.WorldImagery"` |
 
 ## Your choices {#your-choices}
@@ -158,7 +173,7 @@ ORIGINS <- NULL                       # e.g. c("E00085094", "E00085100")
 # Schools
 PHASE <- "secondary"                  # "primary", "secondary" or "any"
 SCHOOLS <- NULL                       # NULL, or URNs, e.g. c(136843)
-SCHOOL_NAME <- NULL                   # NULL, or part of a name, e.g. "Stringer|Varndean"
+SCHOOL_NAME <- "Stringer"                   # NULL, or part of a name, e.g. "Stringer|Varndean"
 INCLUDE_INDEPENDENT <- TRUE
 
 # Which pairs
@@ -166,12 +181,13 @@ MAX_WALK_MIN <- 60                    # walking time at 4.8 km/h on the flat (wa
 NEAREST_ONLY <- FALSE                 # TRUE: only each Output Area's nearest school (by walking time) among those chosen
 
 # Drawing
-COLOUR_BY <- "climb_to_school_m"      # any numeric od column, e.g. "tobler_min_to_school", "bike_min_lts2", "circuity"
+COLOUR_BY <- "tobler_min_to_school"      # any numeric od column, e.g. "tobler_min_to_school", "bike_min_lts2", "circuity", "climb_to_school_m" 
 MAX_ROUTES <- 3000                    # map at most this many routes (the shortest walks first)
 N_PROFILES <- 6                       # height profiles to draw
 PROFILE_ORDER <- "climb_to_school_m"  # profiles of the pairs with the most of this
 PROFILE_DIRECTION <- "to_school"      # "to_school" or "to_home"
-BASEMAP <- "Esri.WorldGrayCanvas"            # or "Esri.WorldGrayCanvas", "Esri.WorldImagery", "OpenStreetMap"     
+BASEMAP <- "Esri.WorldGrayCanvas"            # or "Esri.WorldGrayCanvas", "Esri.WorldImagery", "OpenStreetMap"
+BIKE_ROUTES <- TRUE                   # also route the profile pairs by bike (loads the tile's street network: about a minute and a few GB)
 ```
 
 ## The pairs you chose
@@ -221,8 +237,9 @@ sel |> select(oa21cd, name, walk_min_r5, tobler_min_to_school, tobler_min_to_hom
 
 ## Map of the routes
 
-The routes are read only for the pairs in `sel`, up to `MAX_ROUTES` of them. Click a
-route for its details. The layer control (top right) turns the routes, Output Areas and
+The lines are the **walking** routes, read only for the pairs in `sel`, up to
+`MAX_ROUTES` of them. Coloured by a cycling time, they still show the walk: the
+cycle routes are in [their own section](#cycling-routes). Click a route for its details. The layer control (top right) turns the routes, Output Areas and
 schools on and off.
 
 ```{r read-routes}
@@ -260,7 +277,7 @@ leaflet(rt) |>
                    label = ~oa21cd, group = "Output Areas") |>
   addCircleMarkers(data = sch, lng = ~s_lon, lat = ~s_lat, radius = 6, color = "#222222", fillColor = "white", weight = 2,
                    fillOpacity = 1, label = ~name, group = "Schools") |>
-  addLegend("bottomright", pal = pal, values = c(min(v, na.rm = TRUE), cap), title = COLOUR_BY, opacity = 1) |>
+  addLegend("bottomright", pal = pal, values = c(min(v, na.rm = TRUE), cap), title = paste0(COLOUR_BY, "<br><small>on the walking route</small>"), opacity = 1) |>
   addLayersControl(overlayGroups = c("Routes", "Output Areas", "Schools"), options = layersControlOptions(collapsed = FALSE))
 ```
 
@@ -297,6 +314,75 @@ ggplot(pr, aes(distance_m / 1000, height_m)) +
   labs(x = if (PROFILE_DIRECTION == "to_home") "Distance from school (km)" else "Distance from home (km)", y = "Ground height (m)",
        title = paste("Walking routes: height every 50 m,", sub("_", " ", PROFILE_DIRECTION))) +
   theme_minimal(11)
+```
+
+## Cycling routes, worked out on demand {#cycling-routes}
+
+Only cycling *times* are saved nationally, so this routes the same pairs as the height
+profiles (`pick`) by bike now, with the national run's settings: 12 km/h, on quiet
+streets only (LTS 2) and on any street a bike may use (LTS 4), up to 60 minutes. It
+uses `bike_routes()` from `R/bike_routes.R`, which loads the street network of each
+pair's tile (`data/net/<tile>`): about a minute and a few GB of memory the first time,
+more for the London tiles. Set `BIKE_ROUTES <- FALSE` to skip it. To route other pairs,
+pass any data frame with `oa21cd` and `urn`, e.g. `bike_routes(filter(sel, oa21cd == "E00085094"))`.
+
+The cycling times here should match `bike_min_lts2` and `bike_min_lts4` to within a
+minute. The climb is now that of the cycle route.
+
+```{r bike-route}
+#| eval: !expr BIKE_ROUTES
+source(here::here("R", "bike_routes.R"))
+bk <- bike_routes(pick)
+
+compare <- bind_rows(
+  pick |> transmute(label, oa21cd, urn, mode = "Walk", minutes = walk_min_r5, route_km = round(route_m / 1000, 2),
+                    climb_to_school_m, climb_to_home_m, steep8_to_school_m),
+  st_drop_geometry(bk) |> inner_join(select(pick, oa21cd, urn, label), by = c("oa21cd", "urn")) |>
+    transmute(label, oa21cd, urn, mode = lts_label, minutes = bike_min_route, route_km = round(bike_route_m / 1000, 2),
+              climb_to_school_m, climb_to_home_m, steep8_to_school_m)) |>
+  arrange(label, mode)
+compare
+```
+
+```{r bike-map}
+#| eval: !expr BIKE_ROUTES
+#| fig-height: 7
+modes <- c("Walk" = "#4B2D7F", "Bike, quiet streets (LTS 2)" = "#1B9E77", "Bike, any street (LTS 4)" = "#E07A1F")
+wk <- read_routes(pick, LA) |> mutate(mode = "Walk")
+lines <- rbind(wk[, c("oa21cd", "urn", "mode")], mutate(bk, mode = lts_label)[, c("oa21cd", "urn", "mode")]) |>
+  st_transform(4326) |>
+  left_join(compare |> select(oa21cd, urn, mode, label, minutes, route_km, climb_to_school_m), by = c("oa21cd", "urn", "mode"))
+
+m <- leaflet() |> addProviderTiles(BASEMAP)
+for (md in names(modes)) {
+  l <- filter(lines, mode == md)
+  if (nrow(l)) m <- m |> addPolylines(data = l, color = modes[[md]], weight = 3, opacity = 0.8, group = md,
+                                      popup = ~sprintf("<b>%s</b><br>%s: %.0f min, %.2f km, climb to school %.0f m", label, mode, minutes, route_km, climb_to_school_m),
+                                      highlightOptions = highlightOptions(weight = 6, opacity = 1, bringToFront = TRUE))
+}
+m |>
+  addCircleMarkers(data = distinct(pick, oa21cd, o_lon, o_lat), lng = ~o_lon, lat = ~o_lat, radius = 4, color = "#333333", weight = 1,
+                   fillOpacity = 0.8, label = ~oa21cd) |>
+  addCircleMarkers(data = distinct(pick, urn, name, s_lon, s_lat), lng = ~s_lon, lat = ~s_lat, radius = 6, color = "#222222",
+                   fillColor = "white", weight = 2, fillOpacity = 1, label = ~name) |>
+  addLegend("bottomright", colors = unname(modes), labels = names(modes), opacity = 1) |>
+  addLayersControl(overlayGroups = names(modes), options = layersControlOptions(collapsed = FALSE))
+```
+
+Height along each route to school, walking against cycling:
+
+```{r bike-profiles}
+#| eval: !expr BIKE_ROUTES
+#| fig-height: 6
+both <- bind_rows(
+  read_profiles(pick, LA) |> mutate(mode = "Walk"),
+  bike_profiles(bk) |> as_tibble() |> inner_join(select(pick, oa21cd, urn, label), by = c("oa21cd", "urn")))
+ggplot(both, aes(distance_m / 1000, height_m, colour = mode)) +
+  geom_line(linewidth = 0.7) +
+  scale_colour_manual(values = modes, breaks = names(modes), name = NULL) +
+  facet_wrap(~ label, scales = "free_x", labeller = label_wrap_gen(40)) +
+  labs(x = "Distance from home (km)", y = "Ground height (m)") +
+  theme_minimal(11) + theme(legend.position = "top")
 ```
 
 ## Recipes {#recipes}

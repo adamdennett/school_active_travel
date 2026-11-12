@@ -11,37 +11,46 @@ format:
 execute:
   warning: false
   message: false
+editor: 
+  markdown: 
+    wrap: 72
 ---
 
 ## How to use this
 
-Open this file in RStudio (or Positron) from the `school_active_travel` project, so
-`here::here()` finds the data. Run the chunks one at a time with **Ctrl+Shift+Enter**
-(or *Run All*). Or render the whole page with **Render** (Ctrl+Shift+K).
+Open this file in RStudio (or Positron) from the `school_active_travel`
+project, so `here::here()` finds the data. Run the chunks one at a time
+with **Ctrl+Shift+Enter** (or *Run All*). Or render the whole page with
+**Render** (Ctrl+Shift+K).
 
-You will mostly only edit **one chunk**, [Your choices](#your-choices). Every other
-chunk reads those settings. The [Recipes](#recipes) at the end are small, separate
-examples you can copy and change.
+You will mostly only edit **one chunk**, [Your choices](#your-choices).
+Every other chunk reads those settings. The [Recipes](#recipes) at the
+end are small, separate examples you can copy and change.
 
-::: {.callout-tip}
+::: callout-tip
 ## Keeping memory down
+
 The outputs are filed by the local authority of the home Output Area
-(`data/out/od/la=<code>_<name>/`, and the same for `profiles` and `routes`). Everything
-here filters on `la` first, so only that authority's files are opened. A London borough
-has 300 or more schools within reach of each Output Area, so keep `MAX_WALK_MIN` low or
-pick particular Output Areas and schools there before drawing routes.
+(`data/out/od/la=<code>_<name>/`, and the same for `profiles` and
+`routes`). Everything here filters on `la` first, so only that
+authority's files are opened. A London borough has 300 or more schools
+within reach of each Output Area, so keep `MAX_WALK_MIN` low or pick
+particular Output Areas and schools there before drawing routes.
 :::
 
-::: {.callout-important}
+::: callout-important
 ## What is saved, and what is not
-The national run saves the **walking** route of every pair: its line (`routes`), its
-height every 50 m (`profiles`) and its distance, climb, steepness and slope-adjusted
-times (columns of `od`). For **cycling** it saves only the two **times**
-(`bike_min_lts2`, `bike_min_lts4`), from r5r's travel-time matrix, which gives no line.
-So every line, profile and climb in the main map and charts is the walking route, even
-when the map is coloured by a cycling time; the cycle route may use other streets. To
-see cycle routes, [Cycling routes, worked out on demand](#cycling-routes) routes the
-pairs you pick by bike while you wait (`R/bike_routes.R`).
+
+The national run saves the **walking** route of every pair: its line
+(`routes`), its height every 50 m (`profiles`) and its distance, climb,
+steepness and slope-adjusted times (columns of `od`). For **cycling** it
+saves only the two **times** (`bike_min_lts2`, `bike_min_lts4`), from
+r5r's travel-time matrix, which gives no line. So every line, profile
+and climb in the main map and charts is the walking route, even when the
+map is coloured by a cycling time; the cycle route may use other
+streets. To see cycle routes, [Cycling routes, worked out on
+demand](#cycling-routes) routes the pairs you pick by bike while you
+wait (`R/bike_routes.R`).
 :::
 
 ```{r setup}
@@ -58,9 +67,10 @@ schools <- read_parquet(out_dir("schools.parquet")) |> rename(school_la = la)   
 
 ## What is available so far
 
-Authorities appear here as their routing tiles finish. An authority on the edge of a
-tile can be in this list before all of it is done: `pct_done` is the share of its Output
-Areas whose tile has been gathered.
+Authorities appear here as their routing tiles finish. An authority on
+the edge of a tile can be in this list before all of it is done:
+`pct_done` is the share of its Output Areas whose tile has been
+gathered.
 
 ```{r available}
 gathered <- basename(dirname(Sys.glob(here::here("data", "cache", "tiles", "*", "gathered.csv"))))
@@ -94,12 +104,13 @@ oa_near(50.8300, -0.1050)    # near Whitehawk, Brighton
 
 ## What you can choose from
 
-`od_columns()` lists every column of the `od` table and what it means. Any column
-marked *number* can go in `COLOUR_BY` or `PROFILE_ORDER`, or in a filter of your own.
-Every distance, height, climb, steepness and Tobler column describes the **walking**
-route; the two cycling columns are times only.
-Give it an authority, `od_columns("E06000043_brighton_and_hove")`, and it adds the
-lowest, median and highest values there, so you can see sensible thresholds.
+`od_columns()` lists every column of the `od` table and what it means.
+Any column marked *number* can go in `COLOUR_BY` or `PROFILE_ORDER`, or
+in a filter of your own. Every distance, height, climb, steepness and
+Tobler column describes the **walking** route; the two cycling columns
+are times only. Give it an authority,
+`od_columns("E06000043_brighton_and_hove")`, and it adds the lowest,
+median and highest values there, so you can see sensible thresholds.
 
 ```{r od-columns}
 od_columns <- function(la = NULL) {
@@ -145,7 +156,7 @@ t <- od_columns("E06000043_brighton_and_hove")
 The other choices take these values:
 
 | Setting | Takes |
-|---|---|
+|------------------------------------|------------------------------------|
 | `LA` | one `la` from the *available* table above |
 | `ORIGINS` | `NULL` (all Output Areas in `LA`), or a vector of `oa21cd` codes in that authority |
 | `PHASE` | `"primary"` (schools teaching ages 7–10), `"secondary"` (ages 12–14), or `"any"`; all-through and middle schools count as both where their ages say so |
@@ -192,8 +203,9 @@ BIKE_ROUTES <- TRUE                   # also route the profile pairs by bike (lo
 
 ## The pairs you chose
 
-This reads the authority's `od` file, joins the school details and applies your choices.
-`sel` is an ordinary data frame: one row per Output Area and school.
+This reads the authority's `od` file, joins the school details and
+applies your choices. `sel` is an ordinary data frame: one row per
+Output Area and school.
 
 ```{r select}
 stopifnot("LA is not among the authorities done so far" = LA %in% available$la)
@@ -228,7 +240,8 @@ sel |>
   arrange(desc(output_areas))
 ```
 
-Every pair, with the columns you are most likely to want (all the `od` columns are in `sel`; `od_columns()` above says what each one means):
+Every pair, with the columns you are most likely to want (all the `od`
+columns are in `sel`; `od_columns()` above says what each one means):
 
 ```{r pairs-table}
 sel |> select(oa21cd, name, walk_min_r5, tobler_min_to_school, tobler_min_to_home, route_m, straight_m, circuity,
@@ -237,10 +250,11 @@ sel |> select(oa21cd, name, walk_min_r5, tobler_min_to_school, tobler_min_to_hom
 
 ## Map of the routes
 
-The lines are the **walking** routes, read only for the pairs in `sel`, up to
-`MAX_ROUTES` of them. Coloured by a cycling time, they still show the walk: the
-cycle routes are in [their own section](#cycling-routes). Click a route for its details. The layer control (top right) turns the routes, Output Areas and
-schools on and off.
+The lines are the **walking** routes, read only for the pairs in `sel`,
+up to `MAX_ROUTES` of them. Coloured by a cycling time, they still show
+the walk: the cycle routes are in [their own section](#cycling-routes).
+Click a route for its details. The layer control (top right) turns the
+routes, Output Areas and schools on and off.
 
 ```{r read-routes}
 # Route lines for a set of pairs (needs columns oa21cd, urn) in one authority
@@ -283,10 +297,11 @@ leaflet(rt) |>
 
 ## Height profiles
 
-Each profile is the ground height every 50 m along the walking route. Point *i* is
-*50·i* m from home, and the last point is the school, at `route_m`. These are the
-`N_PROFILES` pairs in `sel` with the most `PROFILE_ORDER`. To draw particular pairs
-instead, set `pick` to a few rows of `sel`, e.g. `pick <- filter(sel, oa21cd == "E00085094")`.
+Each profile is the ground height every 50 m along the walking route.
+Point *i* is *50·i* m from home, and the last point is the school, at
+`route_m`. These are the `N_PROFILES` pairs in `sel` with the most
+`PROFILE_ORDER`. To draw particular pairs instead, set `pick` to a few
+rows of `sel`, e.g. `pick <- filter(sel, oa21cd == "E00085094")`.
 
 ```{r profiles}
 #| fig-height: 6
@@ -318,23 +333,24 @@ ggplot(pr, aes(distance_m / 1000, height_m)) +
 
 ## Cycling routes, worked out on demand {#cycling-routes}
 
-Only cycling *times* are saved nationally, so this routes the same pairs as the height
-profiles (`pick`) by bike now, with the national run's settings: 12 km/h, on quiet
-streets only (LTS 2) and on any street a bike may use (LTS 4), up to 60 minutes. It
-uses `bike_routes()` from `R/bike_routes.R`, which loads the street network of each
-pair's tile (`data/net/<tile>`): about a minute and a few GB of memory the first time,
-more for the London tiles. Set `BIKE_ROUTES <- FALSE` to skip it. To route other pairs,
-pass any data frame with `oa21cd` and `urn`, e.g. `bike_routes(filter(sel, oa21cd == "E00085094"))`.
+Only cycling *times* are saved nationally, so this routes the same pairs
+as the height profiles (`pick`) by bike now, with the national run's
+settings: 12 km/h, on quiet streets only (LTS 2) and on any street a
+bike may use (LTS 4), up to 60 minutes. It uses `bike_routes()` from
+`R/bike_routes.R`, which loads the street network of each pair's tile
+(`data/net/<tile>`): about a minute and a few GB of memory the first
+time, more for the London tiles. Set `BIKE_ROUTES <- FALSE` to skip it.
+To route other pairs, pass any data frame with `oa21cd` and `urn`, e.g.
+`bike_routes(filter(sel, oa21cd == "E00085094"))`.
 
-The cycling times here should match `bike_min_lts2` and `bike_min_lts4` to within a
-minute. The climb is now that of the cycle route.
+The cycling times here should match `bike_min_lts2` and `bike_min_lts4`
+to within a minute. The climb is now that of the cycle route.
 
 ```{r bike-route}
-#| eval: !expr BIKE_ROUTES
 source(here::here("R", "bike_routes.R"))
-bk <- bike_routes(pick)
+bk <- if (BIKE_ROUTES) bike_routes(pick)          # NULL when BIKE_ROUTES is FALSE, and the next chunks do nothing
 
-compare <- bind_rows(
+compare <- if (!is.null(bk)) bind_rows(
   pick |> transmute(label, oa21cd, urn, mode = "Walk", minutes = walk_min_r5, route_km = round(route_m / 1000, 2),
                     climb_to_school_m, climb_to_home_m, steep8_to_school_m),
   st_drop_geometry(bk) |> inner_join(select(pick, oa21cd, urn, label), by = c("oa21cd", "urn")) |>
@@ -345,9 +361,9 @@ compare
 ```
 
 ```{r bike-map}
-#| eval: !expr BIKE_ROUTES
 #| fig-height: 7
 modes <- c("Walk" = "#4B2D7F", "Bike, quiet streets (LTS 2)" = "#1B9E77", "Bike, any street (LTS 4)" = "#E07A1F")
+if (!is.null(bk)) {
 wk <- read_routes(pick, LA) |> mutate(mode = "Walk")
 lines <- rbind(wk[, c("oa21cd", "urn", "mode")], mutate(bk, mode = lts_label)[, c("oa21cd", "urn", "mode")]) |>
   st_transform(4326) |>
@@ -367,13 +383,14 @@ m |>
                    fillColor = "white", weight = 2, fillOpacity = 1, label = ~name) |>
   addLegend("bottomright", colors = unname(modes), labels = names(modes), opacity = 1) |>
   addLayersControl(overlayGroups = names(modes), options = layersControlOptions(collapsed = FALSE))
+}
 ```
 
 Height along each route to school, walking against cycling:
 
 ```{r bike-profiles}
-#| eval: !expr BIKE_ROUTES
 #| fig-height: 6
+if (!is.null(bk)) {
 both <- bind_rows(
   read_profiles(pick, LA) |> mutate(mode = "Walk"),
   bike_profiles(bk) |> as_tibble() |> inner_join(select(pick, oa21cd, urn, label), by = c("oa21cd", "urn")))
@@ -383,11 +400,13 @@ ggplot(both, aes(distance_m / 1000, height_m, colour = mode)) +
   facet_wrap(~ label, scales = "free_x", labeller = label_wrap_gen(40)) +
   labs(x = "Distance from home (km)", y = "Ground height (m)") +
   theme_minimal(11) + theme(legend.position = "top")
+}
 ```
 
 ## Recipes {#recipes}
 
-Small examples to copy, change and run. Each one uses `od`, `sel` and the helpers above.
+Small examples to copy, change and run. Each one uses `od`, `sel` and
+the helpers above.
 
 ### One Output Area to every school it can reach
 
@@ -401,8 +420,9 @@ od |> filter(oa21cd == one) |>
 
 ### Where the nearest secondary school is uphill
 
-Each Output Area's nearest secondary school by walking time, and how far you climb to
-get there. The dots are Output Area centroids, coloured by that climb.
+Each Output Area's nearest secondary school by walking time, and how far
+you climb to get there. The dots are Output Area centroids, coloured by
+that climb.
 
 ```{r recipe-nearest-uphill}
 #| fig-height: 6
@@ -419,7 +439,8 @@ leaflet(near) |> addProviderTiles(BASEMAP) |>
 
 ### Flat time against slope-adjusted time
 
-How much hills add to the walk. Points above the line take longer than on the flat.
+How much hills add to the walk. Points above the line take longer than
+on the flat.
 
 ```{r recipe-tobler}
 ggplot(sel, aes(route_m / 80, tobler_min_to_school)) +
@@ -442,8 +463,9 @@ sel |> filter(!is.na(bike_min_lts4)) |>
 
 ### Across all of England, without loading it
 
-Arrow works on the files where they are and returns only the answer. This counts pairs
-and Output Areas by authority, reading just two columns from every file.
+Arrow works on the files where they are and returns only the answer.
+This counts pairs and Output Areas by authority, reading just two
+columns from every file.
 
 ```{r recipe-england}
 #| eval: false
@@ -466,9 +488,17 @@ readr::write_csv(pr, "my_profiles.csv")
 
 ## Things to try
 
-- **Another place:** change `LA`, and set `ORIGINS` to a few codes from `oa_near()`.
-- **One school's catchment on foot:** `SCHOOL_NAME <- "Stringer"`, `MAX_WALK_MIN <- 30`, `COLOUR_BY <- "tobler_min_to_school"`.
-- **Primary schools within 15 minutes:** `PHASE <- "primary"`, `MAX_WALK_MIN <- 15`, `NEAREST_ONLY <- TRUE`.
-- **Where quiet-street cycling is long or missing:** `COLOUR_BY <- "bike_min_lts2"`. Grey routes have no quiet-street route within 60 minutes.
-- **The hilliest journeys home:** `PROFILE_ORDER <- "climb_to_home_m"`, `PROFILE_DIRECTION <- "to_home"`.
-- **Your own filter:** after the `select` chunk, add a line such as `sel <- filter(sel, steep8_to_school_m > 200)`, then run the map and profile chunks again.
+- **Another place:** change `LA`, and set `ORIGINS` to a few codes from
+  `oa_near()`.
+- **One school's catchment on foot:** `SCHOOL_NAME <- "Stringer"`,
+  `MAX_WALK_MIN <- 30`, `COLOUR_BY <- "tobler_min_to_school"`.
+- **Primary schools within 15 minutes:** `PHASE <- "primary"`,
+  `MAX_WALK_MIN <- 15`, `NEAREST_ONLY <- TRUE`.
+- **Where quiet-street cycling is long or missing:**
+  `COLOUR_BY <- "bike_min_lts2"`. Grey routes have no quiet-street route
+  within 60 minutes.
+- **The hilliest journeys home:** `PROFILE_ORDER <- "climb_to_home_m"`,
+  `PROFILE_DIRECTION <- "to_home"`.
+- **Your own filter:** after the `select` chunk, add a line such as
+  `sel <- filter(sel, steep8_to_school_m > 200)`, then run the map and
+  profile chunks again.

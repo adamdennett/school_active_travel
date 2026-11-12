@@ -418,6 +418,45 @@ od |> filter(oa21cd == one) |>
   arrange(walk_min_r5)
 ```
 
+And on a map: every walking route from that Output Area's centroid, coloured by walking
+time, with each school marked by the ages it teaches. Change `one_max_min` to show only
+the nearer schools (useful in London, where an Output Area can reach 300 or more), and
+`one_colour` to colour the routes by another column, e.g. `"climb_to_school_m"`.
+
+```{r recipe-one-oa-map}
+#| fig-height: 7
+one_max_min <- 120                     # only schools within this many minutes' walk
+one_colour  <- "walk_min_r5"           # any number column of od
+
+one_od <- od |> filter(oa21cd == one, walk_min_r5 <= one_max_min) |>
+  inner_join(schools |> select(urn, name, phase, serves_primary, serves_secondary, independent, s_lon = lon, s_lat = lat), by = "urn") |>
+  mutate(stage = case_when(serves_primary & serves_secondary ~ "Primary and secondary",
+                           serves_secondary ~ "Secondary", TRUE ~ "Primary"))
+one_rt <- read_routes(one_od, LA) |> left_join(one_od, by = c("oa21cd", "urn")) |> st_transform(4326) |>
+  arrange(desc(.data[[one_colour]]))   # nearest drawn last, on top
+home <- origins |> filter(oa21cd == one)
+
+pal_r <- colorNumeric(viridisLite::magma(256, direction = -1, end = 0.92), domain = one_rt[[one_colour]])
+stage_cols <- c("Primary" = "#1B9E77", "Secondary" = "#4B2D7F", "Primary and secondary" = "#E07A1F")
+pal_s <- colorFactor(unname(stage_cols), levels = names(stage_cols))
+
+leaflet() |>
+  addProviderTiles(BASEMAP) |>
+  addPolylines(data = one_rt, color = ~pal_r(one_rt[[one_colour]]), weight = 2.5, opacity = 0.75, group = "Routes",
+               popup = ~sprintf("<b>%s</b> (%s)<br>walk %d min, %.2f km<br>Tobler %.0f min there, %.0f back<br>climb %.0f m there, %.0f m back<br>bike %s min quiet, %s min any street",
+                                name, stage, walk_min_r5, route_m / 1000, tobler_min_to_school, tobler_min_to_home, climb_to_school_m, climb_to_home_m,
+                                ifelse(is.na(bike_min_lts2), "-", bike_min_lts2), ifelse(is.na(bike_min_lts4), "-", bike_min_lts4)),
+               highlightOptions = highlightOptions(weight = 6, opacity = 1, bringToFront = TRUE)) |>
+  addCircleMarkers(data = one_od, lng = ~s_lon, lat = ~s_lat, radius = ~ifelse(independent, 5, 7), color = "white", weight = 1.5,
+                   fillColor = ~pal_s(stage), fillOpacity = 1, group = "Schools",
+                   label = ~sprintf("%s: %d min walk%s", name, walk_min_r5, ifelse(independent, " (independent)", ""))) |>
+  addCircleMarkers(data = home, lng = ~lon, lat = ~lat, radius = 9, color = "black", weight = 3, fillColor = "white", fillOpacity = 1,
+                   label = ~paste("Home:", oa21cd)) |>
+  addLegend("bottomright", pal = pal_r, values = one_rt[[one_colour]], title = one_colour, opacity = 1) |>
+  addLegend("bottomleft", pal = pal_s, values = one_od$stage, title = "School teaches", opacity = 1) |>
+  addLayersControl(overlayGroups = c("Routes", "Schools"), options = layersControlOptions(collapsed = FALSE))
+```
+
 ### Where the nearest secondary school is uphill
 
 Each Output Area's nearest secondary school by walking time, and how far

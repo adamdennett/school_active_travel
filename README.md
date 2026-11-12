@@ -29,6 +29,18 @@ line; `R/example_profile.R` draws one (`docs/example_profile.png`).
 To rebuild a profile's distances: point *i* (from 0) is *50·i* metres from home, and
 the last point is the school, at `route_m`.
 
+### What is saved, and what is not
+
+For **walking**, every pair has its route line (`routes`), its height every 50 m
+(`profiles`) and its distance, climb, steepness and slope-adjusted times (`od`): the
+full matrix. For **cycling**, only the two **times** are saved (`bike_min_lts2`,
+`bike_min_lts4`), from r5r's travel-time matrix, which gives no line. Every route,
+profile, climb and steepness column describes the walking route; a cycle route may use
+other streets. Saving cycle routes for every pair would roughly triple the run.
+`R/bike_routes.R` routes chosen pairs by bike on demand, with the same settings, and
+gives their lines, height profiles and climb; `explore_outputs.qmd` shows them beside
+the walk.
+
 ### Columns of `od`
 
 | Column | Meaning |

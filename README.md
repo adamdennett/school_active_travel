@@ -57,8 +57,9 @@ touch data/PAUSE                           # or stop at the next chunk, at any t
 
 The whole of England is about 23–28 million pairs. On the test machine (16 cores,
 64 GB) that is roughly 11–14 hours: a few minutes clipping streets, 1–2 hours building
-networks, about 8 hours of routes and profiles, and the cycling times. London (tile x08_y03)
-is the largest tile: 18,078 Output Areas and 5.9 million pairs, about 327 schools each. The machine
+networks, about 8 hours of routes and profiles, and the cycling times. London north of about the Thames, with the counties north of it
+(tile x08_y03), is the largest tile: 18,078 Output Areas and 5.9 million pairs, about 327 schools
+each; south London (x08_y02) has 5.1 million. The machine
 must not sleep while it runs.
 
 `run.sh` builds the frame if it is missing (`R/01_frame.R`), clips the streets for each
@@ -102,7 +103,7 @@ itself (r5r's matrix times run about 0.6 minutes shorter than `route_m` at 4.8 k
 pairs, then a shortest-path itinerary for each pair gives the line. Cycling: travel-time
 matrices at 12 km/h with the maximum level of traffic stress at 2 and at 4, searching up to 60
 minutes (12 km, a quarter more than the walking reach; a 120-minute search took over 45
-minutes for London alone). The cycling
+minutes for the northern London tile alone). The cycling
 times are on R5's cycling network, but their climb is described by the walking route,
 which on most journeys follows the same streets.
 
@@ -114,3 +115,12 @@ them. Tobler's hiking function, `v = 6·exp(−3.5·|s + 0.05|)` km/h, scaled so
 
 This follows the routing in `school_value_added` (R/20, R/22, R/27), where the same
 approach was used for 109 urban authorities.
+
+## Looking at the outputs
+
+`explore_outputs.qmd` reads one authority at a time: pick the authority, Output Areas,
+schools and a walking-time limit in one chunk, and it maps the routes (coloured by any
+column), draws height profiles and tabulates the pairs. It has recipes for one Output
+Area's schools, the climb to the nearest secondary school, flat against slope-adjusted
+time, walking against cycling, summaries across England with arrow, and saving a
+selection to CSV or GeoPackage.

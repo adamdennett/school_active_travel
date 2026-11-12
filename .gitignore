@@ -4,3 +4,8 @@
 data/
 logs/
 .claude/
+explore_outputs.html
+explore_outputs_files/
+my_pairs.csv
+my_routes.gpkg
+my_profiles.csv

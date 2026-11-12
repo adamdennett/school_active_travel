@@ -1,0 +1,323 @@
+---
+title: "Exploring the school active travel outputs"
+subtitle: "Pick an authority, some Output Areas and schools; see their routes, height profiles and numbers"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    embed-resources: true
+    code-tools: true
+    df-print: paged
+execute:
+  warning: false
+  message: false
+---
+
+## How to use this
+
+Open this file in RStudio (or Positron) from the `school_active_travel` project, so
+`here::here()` finds the data. Run the chunks one at a time with **Ctrl+Shift+Enter**
+(or *Run All*). Or render the whole page with **Render** (Ctrl+Shift+K).
+
+You will mostly only edit **one chunk**, [Your choices](#your-choices). Every other
+chunk reads those settings. The [Recipes](#recipes) at the end are small, separate
+examples you can copy and change.
+
+::: {.callout-tip}
+## Keeping memory down
+The outputs are filed by the local authority of the home Output Area
+(`data/out/od/la=<code>_<name>/`, and the same for `profiles` and `routes`). Everything
+here filters on `la` first, so only that authority's files are opened. A London borough
+has 300 or more schools within reach of each Output Area, so keep `MAX_WALK_MIN` low or
+pick particular Output Areas and schools there before drawing routes.
+:::
+
+```{r setup}
+library(dplyr)
+library(arrow)
+library(sf)
+library(leaflet)
+library(ggplot2)
+source(here::here("R", "read_helpers.R"))   # out_dir(), od_open(), route_profile(), route_line()
+
+origins <- read_parquet(out_dir("origins.parquet"))                     # 178,605 Output Areas
+schools <- read_parquet(out_dir("schools.parquet")) |> rename(school_la = la)   # 21,834 schools
+```
+
+## What is available so far
+
+Authorities appear here as their routing tiles finish. An authority on the edge of a
+tile can be in this list before all of it is done: `pct_done` is the share of its Output
+Areas whose tile has been gathered.
+
+```{r available}
+gathered <- basename(dirname(Sys.glob(here::here("data", "cache", "tiles", "*", "gathered.csv"))))
+available <- origins |>
+  group_by(la, lad25nm) |>
+  summarise(oas = n(), pct_done = round(100 * mean(tile %in% gathered)), .groups = "drop") |>
+  filter(la %in% sub("^la=", "", list.files(out_dir("od")))) |>
+  arrange(desc(pct_done), lad25nm)
+available
+```
+
+Two small helpers for finding codes:
+
+```{r finders}
+# Schools whose name matches a pattern (not case-sensitive)
+find_school <- function(pattern) {
+  schools |> filter(grepl(pattern, name, ignore.case = TRUE)) |>
+    select(urn, name, phase, low_age, high_age, independent, school_la, postcode)
+}
+# The n Output Areas nearest a point. Right-click a place in Google Maps to copy its lat, lon
+oa_near <- function(lat, lon, n = 5) {
+  origins |>
+    mutate(dist_m = round(sqrt(((.data$lon - !!lon) * 111320 * cos(!!lat * pi / 180))^2 + ((.data$lat - !!lat) * 110540)^2))) |>
+    slice_min(dist_m, n = n) |>
+    select(oa21cd, dist_m, la, lad25nm, oac_subgroup, age_5_9, age_10_14)
+}
+
+find_school("Stringer")
+oa_near(50.8300, -0.1050)    # near Whitehawk, Brighton
+```
+
+## Your choices {#your-choices}
+
+**Edit this chunk**, then run it and everything below it again.
+
+```{r settings}
+LA <- "E06000043_brighton_and_hove"   # one authority folder, from the table above (column la)
+
+# Origins: NULL for every Output Area in LA, or a vector of codes
+ORIGINS <- NULL                       # e.g. c("E00085094", "E00085100")
+
+# Schools
+PHASE <- "secondary"                  # "primary", "secondary" or "any"
+SCHOOLS <- NULL                       # NULL, or URNs, e.g. c(136843)
+SCHOOL_NAME <- NULL                   # NULL, or part of a name, e.g. "Stringer|Varndean"
+INCLUDE_INDEPENDENT <- TRUE
+
+# Which pairs
+MAX_WALK_MIN <- 20                    # walking time at 4.8 km/h on the flat (walk_min_r5)
+NEAREST_ONLY <- FALSE                 # TRUE: only each Output Area's nearest school (by walking time) among those chosen
+
+# Drawing
+COLOUR_BY <- "climb_to_school_m"      # any numeric od column, e.g. "tobler_min_to_school", "bike_min_lts2", "circuity"
+MAX_ROUTES <- 3000                    # map at most this many routes (the shortest walks first)
+N_PROFILES <- 6                       # height profiles to draw
+PROFILE_ORDER <- "climb_to_school_m"  # profiles of the pairs with the most of this
+PROFILE_DIRECTION <- "to_school"      # "to_school" or "to_home"
+BASEMAP <- "OpenStreetMap"            # or "Esri.WorldGrayCanvas", "Esri.WorldImagery"
+```
+
+## The pairs you chose
+
+This reads the authority's `od` file, joins the school details and applies your choices.
+`sel` is an ordinary data frame: one row per Output Area and school.
+
+```{r select}
+stopifnot("LA is not among the authorities done so far" = LA %in% available$la)
+od <- od_open() |> filter(la == !!LA) |> collect()
+
+sel <- od |>
+  inner_join(schools |> select(urn, name, phase, serves_primary, serves_secondary, independent,
+                               selective, faith, pupils, s_lon = lon, s_lat = lat), by = "urn") |>
+  left_join(origins |> select(oa21cd, o_lon = lon, o_lat = lat, oac_subgroup, age_5_9, age_10_14), by = "oa21cd")
+
+if (!is.null(ORIGINS))     sel <- filter(sel, oa21cd %in% ORIGINS)
+if (PHASE == "primary")    sel <- filter(sel, serves_primary)
+if (PHASE == "secondary")  sel <- filter(sel, serves_secondary)
+if (!INCLUDE_INDEPENDENT)  sel <- filter(sel, !independent)
+if (!is.null(SCHOOLS))     sel <- filter(sel, urn %in% SCHOOLS)
+if (!is.null(SCHOOL_NAME)) sel <- filter(sel, grepl(SCHOOL_NAME, name, ignore.case = TRUE))
+sel <- filter(sel, walk_min_r5 <= MAX_WALK_MIN)
+if (NEAREST_ONLY) sel <- sel |> group_by(oa21cd) |> slice_min(walk_min_r5, n = 1, with_ties = FALSE) |> ungroup()
+sel <- sel |> arrange(walk_min_r5) |> mutate(label = paste0(oa21cd, " to ", name))
+
+cat(format(nrow(sel), big.mark = ","), "pairs:", n_distinct(sel$oa21cd), "Output Areas,", n_distinct(sel$urn), "schools\n")
+```
+
+By school:
+
+```{r by-school}
+sel |>
+  group_by(urn, name) |>
+  summarise(output_areas = n(), median_walk_min = median(walk_min_r5), median_route_km = round(median(route_m) / 1000, 2),
+            median_climb_to_school_m = round(median(climb_to_school_m)), median_climb_to_home_m = round(median(climb_to_home_m)),
+            pct_with_quiet_bike_route = round(100 * mean(!is.na(bike_min_lts2))), .groups = "drop") |>
+  arrange(desc(output_areas))
+```
+
+Every pair, with the columns you are most likely to want (all 27 `od` columns are in `sel`; see the README for what each one means):
+
+```{r pairs-table}
+sel |> select(oa21cd, name, walk_min_r5, tobler_min_to_school, tobler_min_to_home, route_m, straight_m, circuity,
+              climb_to_school_m, climb_to_home_m, max_grad_to_school, steep8_to_school_m, bike_min_lts2, bike_min_lts4)
+```
+
+## Map of the routes
+
+The routes are read only for the pairs in `sel`, up to `MAX_ROUTES` of them. Click a
+route for its details. The layer control (top right) turns the routes, Output Areas and
+schools on and off.
+
+```{r read-routes}
+# Route lines for a set of pairs (needs columns oa21cd, urn) in one authority
+read_routes <- function(pairs, la) {
+  x <- open_dataset(out_dir("routes")) |>
+    filter(la == !!la, oa21cd %in% !!unique(pairs$oa21cd), urn %in% !!unique(pairs$urn)) |>   # only these Output Areas and schools
+    collect() |>
+    semi_join(pairs, by = c("oa21cd", "urn"))
+  st_sf(x |> select(oa21cd, urn), geometry = st_as_sfc(structure(lapply(x$geom_wkb, as.raw), class = "WKB"), crs = 27700))
+}
+
+to_map <- head(sel, MAX_ROUTES)
+rt <- read_routes(to_map, LA) |> left_join(to_map, by = c("oa21cd", "urn")) |> st_transform(4326)
+```
+
+```{r map}
+#| fig-height: 7
+stopifnot(is.numeric(rt[[COLOUR_BY]]))
+v <- rt[[COLOUR_BY]]
+cap <- quantile(v, 0.98, na.rm = TRUE)                  # so a few extreme routes don't wash out the colours
+pal <- colorNumeric(viridisLite::magma(256, direction = -1, end = 0.92), domain = c(min(v, na.rm = TRUE), cap), na.color = "#bbbbbb")
+pop <- with(rt, sprintf(
+  "<b>%s</b> to <b>%s</b><br>walk %d min (r5r), route %.2f km<br>Tobler: %.0f min there, %.0f min back<br>climb: %.0f m there, %.0f m back<br>steepest: %.0f%% there<br>bike: %s min quiet streets, %s min any street",
+  oa21cd, name, walk_min_r5, route_m / 1000, tobler_min_to_school, tobler_min_to_home, climb_to_school_m, climb_to_home_m,
+  100 * max_grad_to_school, ifelse(is.na(bike_min_lts2), "none within 60", bike_min_lts2), ifelse(is.na(bike_min_lts4), "none within 60", bike_min_lts4)))
+oas <- distinct(st_drop_geometry(rt), oa21cd, o_lon, o_lat)
+sch <- distinct(st_drop_geometry(rt), urn, name, s_lon, s_lat)
+
+leaflet(rt) |>
+  addProviderTiles(BASEMAP) |>
+  addPolylines(color = ~pal(pmin(v, cap)), weight = 2, opacity = 0.6, popup = pop, group = "Routes",
+               highlightOptions = highlightOptions(weight = 5, opacity = 1, bringToFront = TRUE)) |>
+  addCircleMarkers(data = oas, lng = ~o_lon, lat = ~o_lat, radius = 2, color = "#333333", weight = 1, fillOpacity = 0.6,
+                   label = ~oa21cd, group = "Output Areas") |>
+  addCircleMarkers(data = sch, lng = ~s_lon, lat = ~s_lat, radius = 6, color = "#222222", fillColor = "white", weight = 2,
+                   fillOpacity = 1, label = ~name, group = "Schools") |>
+  addLegend("bottomright", pal = pal, values = c(min(v, na.rm = TRUE), cap), title = COLOUR_BY, opacity = 1) |>
+  addLayersControl(overlayGroups = c("Routes", "Output Areas", "Schools"), options = layersControlOptions(collapsed = FALSE))
+```
+
+## Height profiles
+
+Each profile is the ground height every 50 m along the walking route. Point *i* is
+*50·i* m from home, and the last point is the school, at `route_m`. These are the
+`N_PROFILES` pairs in `sel` with the most `PROFILE_ORDER`. To draw particular pairs
+instead, set `pick` to a few rows of `sel`, e.g. `pick <- filter(sel, oa21cd == "E00085094")`.
+
+```{r profiles}
+#| fig-height: 6
+# Height profiles for a set of pairs (needs oa21cd, urn, route_m, label) in one authority
+read_profiles <- function(pairs, la, step = 50) {
+  x <- open_dataset(out_dir("profiles")) |>
+    filter(la == !!la, oa21cd %in% !!unique(pairs$oa21cd), urn %in% !!unique(pairs$urn)) |>   # only these Output Areas and schools
+    collect() |>
+    inner_join(pairs |> select(oa21cd, urn, route_m, label), by = c("oa21cd", "urn"))
+  bind_rows(lapply(seq_len(nrow(x)), function(i) {
+    z <- as.integer(x$elev_dm[[i]]) / 10
+    d <- pmin(seq(0, by = step, length.out = length(z)), x$route_m[i]); d[length(d)] <- x$route_m[i]
+    tibble(oa21cd = x$oa21cd[i], urn = x$urn[i], label = x$label[i], distance_m = d, height_m = z)
+  }))
+}
+
+pick <- sel |> slice_max(.data[[PROFILE_ORDER]], n = N_PROFILES, with_ties = FALSE)
+pr <- read_profiles(pick, LA)
+if (PROFILE_DIRECTION == "to_home") pr <- pr |> group_by(label) |> mutate(distance_m = max(distance_m) - distance_m) |> ungroup()
+
+ggplot(pr, aes(distance_m / 1000, height_m)) +
+  geom_area(fill = "#C9B6E4", alpha = 0.6) +
+  geom_line(colour = "#4B2D7F", linewidth = 0.7) +
+  facet_wrap(~ label, scales = "free_x", labeller = label_wrap_gen(40)) +
+  labs(x = if (PROFILE_DIRECTION == "to_home") "Distance from school (km)" else "Distance from home (km)", y = "Ground height (m)",
+       title = paste("Walking routes: height every 50 m,", sub("_", " ", PROFILE_DIRECTION))) +
+  theme_minimal(11)
+```
+
+## Recipes {#recipes}
+
+Small examples to copy, change and run. Each one uses `od`, `sel` and the helpers above.
+
+### One Output Area to every school it can reach
+
+```{r recipe-one-oa}
+one <- "E00085094"   # change me (it must be in LA)
+od |> filter(oa21cd == one) |>
+  inner_join(schools |> select(urn, name, phase), by = "urn") |>
+  select(name, phase, walk_min_r5, tobler_min_to_school, climb_to_school_m, climb_to_home_m, bike_min_lts2, bike_min_lts4) |>
+  arrange(walk_min_r5)
+```
+
+### Where the nearest secondary school is uphill
+
+Each Output Area's nearest secondary school by walking time, and how far you climb to
+get there. The dots are Output Area centroids, coloured by that climb.
+
+```{r recipe-nearest-uphill}
+#| fig-height: 6
+near <- od |>
+  inner_join(schools |> filter(serves_secondary) |> select(urn, name), by = "urn") |>
+  group_by(oa21cd) |> slice_min(walk_min_r5, n = 1, with_ties = FALSE) |> ungroup() |>
+  left_join(origins |> select(oa21cd, lon, lat), by = "oa21cd")
+pal2 <- colorNumeric(viridisLite::magma(256, direction = -1, end = 0.92), domain = range(near$climb_to_school_m))
+leaflet(near) |> addProviderTiles(BASEMAP) |>
+  addCircleMarkers(~lon, ~lat, radius = 4, stroke = FALSE, fillOpacity = 0.85, fillColor = ~pal2(climb_to_school_m),
+                   label = ~sprintf("%s: %s, %d min walk, %.0f m climb", oa21cd, name, walk_min_r5, climb_to_school_m)) |>
+  addLegend("bottomright", pal = pal2, values = ~climb_to_school_m, title = "Climb to nearest<br>secondary (m)", opacity = 1)
+```
+
+### Flat time against slope-adjusted time
+
+How much hills add to the walk. Points above the line take longer than on the flat.
+
+```{r recipe-tobler}
+ggplot(sel, aes(route_m / 80, tobler_min_to_school)) +
+  geom_point(alpha = 0.2, size = 0.8, colour = "#4B2D7F") +
+  geom_abline(linetype = "22") +
+  labs(x = "Walking time on the flat, route length at 4.8 km/h (min)", y = "Tobler time to school (min)") +
+  theme_minimal(11)
+```
+
+### Walking against cycling
+
+```{r recipe-bike}
+sel |> filter(!is.na(bike_min_lts4)) |>
+  ggplot(aes(walk_min_r5, bike_min_lts4)) +
+  geom_point(alpha = 0.2, size = 0.8, colour = "#4B2D7F") +
+  geom_point(aes(y = bike_min_lts2), alpha = 0.2, size = 0.8, colour = "#E07A1F", data = ~ filter(.x, !is.na(bike_min_lts2))) +
+  labs(x = "Walking time (min)", y = "Cycling time (min)", caption = "Purple: any street (LTS 4). Orange: quiet streets only (LTS 2).") +
+  theme_minimal(11)
+```
+
+### Across all of England, without loading it
+
+Arrow works on the files where they are and returns only the answer. This counts pairs
+and Output Areas by authority, reading just two columns from every file.
+
+```{r recipe-england}
+#| eval: false
+od_open() |>
+  filter(walk_min_r5 <= 20) |>
+  group_by(la) |>
+  summarise(pairs = n(), output_areas = n_distinct(oa21cd)) |>
+  collect() |>
+  arrange(desc(pairs))
+```
+
+### Save what you chose
+
+```{r recipe-save}
+#| eval: false
+readr::write_csv(select(sel, -label), "my_pairs.csv")
+st_write(st_transform(rt, 27700), "my_routes.gpkg", delete_dsn = TRUE)   # open in QGIS
+readr::write_csv(pr, "my_profiles.csv")
+```
+
+## Things to try
+
+- **Another place:** change `LA`, and set `ORIGINS` to a few codes from `oa_near()`.
+- **One school's catchment on foot:** `SCHOOL_NAME <- "Stringer"`, `MAX_WALK_MIN <- 30`, `COLOUR_BY <- "tobler_min_to_school"`.
+- **Primary schools within 15 minutes:** `PHASE <- "primary"`, `MAX_WALK_MIN <- 15`, `NEAREST_ONLY <- TRUE`.
+- **Where quiet-street cycling is long or missing:** `COLOUR_BY <- "bike_min_lts2"`. Grey routes have no quiet-street route within 60 minutes.
+- **The hilliest journeys home:** `PROFILE_ORDER <- "climb_to_home_m"`, `PROFILE_DIRECTION <- "to_home"`.
+- **Your own filter:** after the `select` chunk, add a line such as `sel <- filter(sel, steep8_to_school_m > 200)`, then run the map and profile chunks again.

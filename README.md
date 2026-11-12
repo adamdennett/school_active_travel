@@ -38,7 +38,7 @@ the last point is the school, at `route_m`.
 | `walk_min_r5` | walking time at 4.8 km/h on the flat (r5r travel-time matrix); this sets who is in reach |
 | `walk_min_route` | the same from the routed path (r5r detailed itinerary) |
 | `tobler_min_to_school`, `tobler_min_to_home` | walking time each way allowing for slope (Tobler's hiking function, scaled so the flat is 4.8 km/h) |
-| `bike_min_lts2`, `bike_min_lts4` | cycling time at 12 km/h on quiet streets only (level of traffic stress 2) and on any street a bike may use (LTS 4); empty where there is no such route within 120 minutes |
+| `bike_min_lts2`, `bike_min_lts4` | cycling time at 12 km/h on quiet streets only (level of traffic stress 2) and on any street a bike may use (LTS 4); empty where there is no such route within 60 minutes (R5 has the rider walk the bike where no quiet street joins up, so many LTS 2 times are long; in Brighton 22% of pairs had no LTS 2 route within 60 minutes, 1% no LTS 4 route). The Brighton tile (x08_y01) was run with a 120-minute search, so it has times above 60 |
 | `z_home`, `z_school`, `z_max` | ground height at each end and the highest point (metres) |
 | `climb_to_school_m`, `climb_to_home_m` | total ascent each way (metres) |
 | `max_grad_to_school`, `max_grad_to_home` | steepest 50 m going uphill each way (rise over run) |
@@ -57,7 +57,8 @@ touch data/PAUSE                           # or stop at the next chunk, at any t
 
 The whole of England is about 23–28 million pairs. On the test machine (16 cores,
 64 GB) that is roughly 11–14 hours: a few minutes clipping streets, 1–2 hours building
-networks, about 8 hours of routes and profiles, 2–3 hours of cycling times. The machine
+networks, about 8 hours of routes and profiles, and the cycling times. London (tile x08_y03)
+is the largest tile: 18,078 Output Areas and 5.9 million pairs, about 327 schools each. The machine
 must not sleep while it runs.
 
 `run.sh` builds the frame if it is missing (`R/01_frame.R`), clips the streets for each
@@ -99,7 +100,9 @@ longer on average, with cycling 3.5 times faster to compute.) `walk_min_r5` sets
 for analysis, `route_m` with a chosen speed, or the Tobler times, describe the route
 itself (r5r's matrix times run about 0.6 minutes shorter than `route_m` at 4.8 km/h). Walking: the travel-time matrix sets the
 pairs, then a shortest-path itinerary for each pair gives the line. Cycling: travel-time
-matrices at 12 km/h with the maximum level of traffic stress at 2 and at 4. The cycling
+matrices at 12 km/h with the maximum level of traffic stress at 2 and at 4, searching up to 60
+minutes (12 km, a quarter more than the walking reach; a 120-minute search took over 45
+minutes for London alone). The cycling
 times are on R5's cycling network, but their climb is described by the walking route,
 which on most journeys follows the same streets.
 

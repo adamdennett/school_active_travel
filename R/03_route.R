@@ -6,7 +6,8 @@
 #           of the tile's Output Areas to every school in its core plus 10 km. Pairs
 #           within 120 minutes are the tile's origin-destination set.
 #   bike    Cycling times at 12 km/h for the same pairs, on quiet streets only (level of
-#           traffic stress 2) and on any street a bike may use (LTS 4).
+#           traffic stress 2) and on any street a bike may use (LTS 4), searching up to BIKE_MAX
+#           (60) minutes: every walking pair is within 9.6 km, so 12 km leaves room for detours.
 #   routes  The walking route for every pair (r5r detailed_itineraries, shortest path),
 #           in chunks. For each route: its length, a height profile from OS Terrain 50
 #           (ground height every 50 m from home to school, bilinear from the 50 m grid,
@@ -46,10 +47,10 @@ at <- as.POSIXct(paste(ROUTE_DATE, "08:00:00"), tz = "Europe/London")
 # With no transit and more origins than destinations, r5r searches backwards and can return
 # the ids swapped, so origins go in blocks no larger than the destinations (as in
 # school_value_added R/20 and R/27), and every result is checked.
-ttm <- function(mode, ...) {
+ttm <- function(mode, ..., max_trip = MAX_MIN) {
   blocks <- split(seq_len(nrow(or)), ceiling(seq_len(nrow(or)) / nrow(de)))
   x <- rbindlist(lapply(blocks, function(i) { y <- as.data.table(travel_time_matrix(net, origins = or[i], destinations = de, mode = mode, departure_datetime = at,
-        time_window = 1, percentiles = 50, max_trip_duration = MAX_MIN, n_threads = N_THREADS, progress = FALSE, ...))
+        time_window = 1, percentiles = 50, max_trip_duration = max_trip, n_threads = N_THREADS, progress = FALSE, ...))
         if (nrow(y) && all(y$from_id %in% de$id) && all(y$to_id %in% or$id)) setnames(y, c("from_id", "to_id"), c("to_id", "from_id"))
         y }))
   stopifnot(all(x$from_id %in% or$id), all(x$to_id %in% de$id))
@@ -68,7 +69,7 @@ P <- as.data.table(arrow::read_parquet(f("pairs.parquet")))
 stop_if_late()
 if ("bike" %in% STEPS && !file.exists(f("bike.parquet"))) { t0 <- Sys.time()
   b <- P[, .(oa21cd, urn)]
-  for (l in LTS) { x <- ttm("BICYCLE", bike_speed = BIKE_SPEED, max_bike_time = MAX_MIN, max_lts = l)
+  for (l in LTS) { x <- ttm("BICYCLE", bike_speed = BIKE_SPEED, max_bike_time = BIKE_MAX, max_lts = l, max_trip = BIKE_MAX)
     x <- x[, .(oa21cd = from_id, urn = as.integer(to_id), t)]; setnames(x, "t", paste0("bike_min_lts", l))
     b <- merge(b, x, by = c("oa21cd", "urn"), all.x = TRUE) }
   arrow::write_parquet(b, f("bike.parquet"))

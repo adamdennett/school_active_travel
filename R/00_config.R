@@ -29,6 +29,7 @@ FRAME_F <- file.path(CACHE, "frame.rds")
 WALK_SPEED <- 4.8; MAX_MIN <- 120; REACH_M <- WALK_SPEED * 1000 * MAX_MIN / 60
 TILE_M <- 60000; SCHOOL_BUF <- 10000; NET_BUF <- 12000
 BIKE_SPEED <- 12; LTS <- c(2L, 4L)   # quiet streets only, and any street a bike may use
+BIKE_MAX <- 60L     # cycling search, minutes: 12 km at 12 km/h, a quarter more than the 9.6 km walking reach
 ROUTE_DATE <- as.Date("2026-11-17")  # a Tuesday in term; walking and cycling do not depend on it
 
 java_setup <- function(heap = Sys.getenv("R5R_HEAP", "20G")) {

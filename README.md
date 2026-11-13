@@ -1,5 +1,7 @@
 # School active travel: walking and cycling routes to every school in England
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24188820.svg)](https://doi.org/10.5281/zenodo.24188820)
+
 Origin–destination matrices from every Census 2021 Output Area in England to every
 mainstream school within 120 minutes' walk. They are inputs for estimating how many
 children could walk, wheel or cycle to school, and where, alongside an individual-level
@@ -10,7 +12,8 @@ its distance, a full height profile and its climb each way.
 
 **Status (13 November 2026): complete.** All 58 routing tiles are done: 178,605 Output
 Areas, 24,022,940 Output Area to school pairs, about 5.6 GB of Parquet. The outputs
-are not in this repository; a public download is being set up and will be linked here.
+are not in this repository: download them from Zenodo, <https://doi.org/10.5281/zenodo.24188820>
+(ODbL), where the data guide describes every file and column.
 
 The routes are derived from OpenStreetMap, so they carry its licence (ODbL) and need
 the credit "© OpenStreetMap contributors". Heights are from OS Terrain 50 (Ordnance

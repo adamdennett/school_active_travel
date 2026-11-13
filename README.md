@@ -6,6 +6,18 @@ children could walk, wheel or cycle to school, and where, alongside an individua
 model from the National Travel Survey. Every route has its walking and cycling times,
 its distance, a full height profile and its climb each way.
 
+![Walking routes to secondary schools in Brighton and Hove, coloured by the climb to school](docs/check_E06000043_brighton_and_hove.png)
+
+**Status (13 November 2026): complete.** All 58 routing tiles are done: 178,605 Output
+Areas, 24,022,940 Output Area to school pairs, about 5.6 GB of Parquet. The outputs
+are not in this repository; a public download is being set up and will be linked here.
+
+The routes are derived from OpenStreetMap, so they carry its licence (ODbL) and need
+the credit "© OpenStreetMap contributors". Heights are from OS Terrain 50 (Ordnance
+Survey, Open Government Licence), and the Output Areas and their populations are from
+ONS Census 2021, the schools from DfE's Get Information about Schools (both Open
+Government Licence).
+
 ## What is produced (`data/out`, not committed)
 
 | Output | What it holds |
@@ -63,7 +75,7 @@ Times at another walking speed scale linearly: at 3.6 km/h, multiply the flat ti
 
 ```bash
 DEADLINE="2026-11-12 07:00" ./run.sh     # first night: stops cleanly at 07:00
-DEADLINE="2026-11-13 07:00" ./run.sh     # second night: carries on where it stopped
+DEADLINE="2026-11-13 07:00" ./run.sh     # second night: carries on where it stopped (the last 11 small tiles took 3 minutes the next morning)
 touch data/PAUSE                           # or stop at the next chunk, at any time (delete it to restart)
 ```
 
